@@ -1,0 +1,1792 @@
+--[[
+    Project: Brick Studio
+    Description: สคริปต์รวมสมบูรณ์แบบ V5 (Ultra ESP 4 หมวดหมู่ + เก็บกุญแจ/เหรียญ/หัวฟักทองแบบส่งสัญญาณและแบบวาร์ป + 4 สัญญาณเซิร์ฟเวอร์ + 7 ระบบโกงเซิร์ฟเวอร์ + เพิ่มความไว)
+]]
+
+-- 1. เรียกใช้งาน Services มาตรฐานของ Roblox
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
+local CoreGui = game:GetService("CoreGui")
+
+-- 2. อ้างอิงข้อมูลผู้เล่นด้วย WaitForChild
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ล้างสคริปต์เก่าอัตโนมัติหากเคยรันไว้ก่อนหน้า
+if _G.BrickStudio_Cleanup then
+    pcall(_G.BrickStudio_Cleanup)
+end
+
+-- 3. การตั้งค่าพารามิเตอร์ทั้งหมดของ Brick Studio
+local BrickStudioConfig = {
+    Title = "Brick Studio",
+    WelcomeMessage = "ยินดีต้อนรับสู่ Brick Studio วันนี้คุณต้องการสร้างอะไรคุณบอส",
+    Running = true,
+    ESP = {
+        MonsterESP = true,       -- ESP ไอ้ตัวประหลาด
+        MonsterTracer = true,    -- เส้นชี้เป้าตัวประหลาด
+        PlayerESP = true,        -- ESP ผู้เล่น
+        PumpkinESP = true,       -- ESP หัวฟักทองฮาโลวีน
+        KeyAndCoinESP = true,    -- ESP กุญแจ เหรียญ และไอเทมสำคัญ
+        KeyTracer = true,        -- เส้นชี้เป้าไปหากุญแจ
+        DangerRadar = true,      -- เรดาร์แจ้งเตือนด้านบนจอ
+        Fullbright = false       -- เพิ่มความสว่างสูงสุด
+    },
+    CollectSystem = {
+        -- ระบบเก็บหัวฟักทองฮาโลวีน (เลือกได้ทั้งส่งสัญญาณไม่วาร์ป และ วาร์ปไปเก็บ)
+        AutoSignalPumpkins = false,  -- ส่งสัญญาณไปเก็บหัวฟักทองอัตโนมัติ (ไม่วาร์ป)
+        AutoTeleportPumpkins = false,-- วาร์ปไปเก็บหัวฟักทองอัตโนมัติ
+        -- ระบบเก็บกุญแจและเหรียญ (ส่งสัญญาณไปเก็บ ไม่ต้องวาร์ป)
+        AutoSignalKeysCoins = false  -- ส่งสัญญาณไปเก็บกุญแจและเหรียญอัตโนมัติ (ไม่วาร์ป)
+    },
+    ServerSignals = {
+        -- 4 สัญญาณเซิร์ฟเวอร์หลัก
+        AutoSignal1_Interact = false,   -- สัญญาณที่ 1: เปิดประตู/กดสวิตช์/ภารกิจ
+        AutoSignal2_CollectAll = false, -- สัญญาณที่ 2: ส่งสัญญาณเก็บของทั้งหมดในแมพ
+        AutoSignal3_Combat = false,     -- สัญญาณที่ 3: ส่งสัญญาณโจมตี/สตั๊นตัวประหลาด
+        AutoSignal4_RoundState = false, -- สัญญาณที่ 4: ส่งสัญญาณเกิดใหม่/เข้าเกมไว/รับรางวัล
+        -- ระบบโกงฝั่งเซิร์ฟเวอร์เพิ่มเติม
+        AutoDodgeMonster = false,
+        DodgeDistance = 15,
+        HitboxExpander = false,
+        HitboxSize = 14,
+        AntiFling = true,
+        ReplayLastRemote = false,
+        -- ระบบดักจับและเลือกยิงสัญญาณเอง
+        ListenSignals = true,
+        NotifyOnSignal = true,
+        SelectedRemoteName = "",
+        CustomSignalArg = "",
+        AutoFireCustom = false
+    },
+    Movement = {
+        LockWalkSpeed = false,
+        TargetWalkSpeed = 28,
+        CFrameSpeedEnabled = false,
+        CFrameSpeedPower = 1.2,
+        InfiniteJump = false,
+        Noclip = false
+    },
+    Colors = {
+        MonsterFill = Color3.fromRGB(255, 0, 45),
+        MonsterOutline = Color3.fromRGB(255, 235, 0),
+        PlayerFill = Color3.fromRGB(0, 255, 140),
+        PlayerOutline = Color3.fromRGB(255, 255, 255),
+        PumpkinFill = Color3.fromRGB(255, 130, 0),
+        PumpkinOutline = Color3.fromRGB(255, 255, 100),
+        KeyFill = Color3.fromRGB(0, 210, 255),
+        KeyOutline = Color3.fromRGB(255, 255, 255),
+        CoinFill = Color3.fromRGB(255, 215, 0),
+        CoinOutline = Color3.fromRGB(255, 255, 200)
+    },
+    MonsterKeywords = {
+        "locust", "monster", "murder", "killer", "entity", "creature",
+        "beast", "slasher", "stalker", "wendigo", "rake", "anomaly", "boss"
+    },
+    AttackKeywords = {
+        "knife", "blade", "slash", "claw", "locust", "attack", "stab", "kill", "scythe", "machete", "hit", "swipe"
+    },
+    PumpkinKeywords = {
+        "pumpkin", "jack", "lantern", "halloween", "candy", "treat",
+        "soul", "skull", "ghost", "cauldron", "head"
+    },
+    KeyKeywords = {
+        "key", "keycard", "passcard", "lockpick", "fuse", "battery", "gas", "gear", "lever", "crowbar", "tool"
+    },
+    CoinKeywords = {
+        "coin", "cash", "money", "gold", "gem", "token", "orb", "crystal", "point", "shard", "drop"
+    }
+}
+
+-- เก็บค่าแสงเดิมของแมพ
+local OriginalLighting = {
+    Brightness = Lighting.Brightness,
+    ClockTime = Lighting.ClockTime,
+    FogEnd = Lighting.FogEnd,
+    GlobalShadows = Lighting.GlobalShadows,
+    Ambient = Lighting.Ambient,
+    OutdoorAmbient = Lighting.OutdoorAmbient
+}
+
+-- 4. ฟังก์ชันแจ้งเตือนต้อนรับของ Brick Studio
+local function sendBrickStudioNotification(text, duration)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = BrickStudioConfig.Title,
+            Text = text,
+            Duration = duration or 4
+        })
+    end)
+end
+
+task.spawn(function()
+    task.wait(0.4)
+    sendBrickStudioNotification(BrickStudioConfig.WelcomeMessage, 6)
+end)
+
+-- 5. สร้างโฟลเดอร์เก็บ ESP กลาง และหน้าจอ Danger Radar HUD
+local ESPGuiParent = (pcall(function() return CoreGui.Name end) and CoreGui) or PlayerGui
+
+local OldESPFolder = ESPGuiParent:FindFirstChild("BrickStudio_ESP_V5")
+if OldESPFolder then OldESPFolder:Destroy() end
+
+local ESPContainer = Instance.new("Folder")
+ESPContainer.Name = "BrickStudio_ESP_V5"
+ESPContainer.Parent = ESPGuiParent
+
+local OldRadar = PlayerGui:FindFirstChild("BrickStudio_RadarHUD")
+if OldRadar then OldRadar:Destroy() end
+
+local RadarScreen = Instance.new("ScreenGui")
+RadarScreen.Name = "BrickStudio_RadarHUD"
+RadarScreen.ResetOnSpawn = false
+RadarScreen.Parent = PlayerGui
+
+local RadarFrame = Instance.new("Frame")
+RadarFrame.Size = UDim2.new(0, 420, 0, 42)
+RadarFrame.Position = UDim2.new(0.5, -210, 0.015, 0)
+RadarFrame.BackgroundColor3 = Color3.fromRGB(16, 16, 24)
+RadarFrame.BackgroundTransparency = 0.15
+RadarFrame.BorderSizePixel = 0
+RadarFrame.Parent = RadarScreen
+
+local RadarCorner = Instance.new("UICorner")
+RadarCorner.CornerRadius = UDim.new(0, 8)
+RadarCorner.Parent = RadarFrame
+
+local RadarStroke = Instance.new("UIStroke")
+RadarStroke.Color = Color3.fromRGB(0, 255, 140)
+RadarStroke.Thickness = 2
+RadarStroke.Parent = RadarFrame
+
+local RadarLabel = Instance.new("TextLabel")
+RadarLabel.Size = UDim2.new(1, 0, 1, 0)
+RadarLabel.BackgroundTransparency = 1
+RadarLabel.Font = Enum.Font.GothamBold
+RadarLabel.TextSize = 13
+RadarLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+RadarLabel.Text = "Brick Studio Radar: กำลังสแกนแมพ..."
+RadarLabel.Parent = RadarFrame
+
+-- ============================================================================
+-- 6. ระบบ Ultra ESP Engine V5 (Hybrid Highlight + 3D BoxAdornment + Billboard + Beam)
+-- เปิด-ปิดได้ทันที 100% ไม่ติดลิมิต 31 ชิ้นของ Roblox
+-- ============================================================================
+local ActiveESPRegistry = {} -- [Instance] = { Category, Highlight, BoxAdorn, Billboard, Label, Beam, TargetAtt }
+
+local function getRootPart(target)
+    if not target then return nil end
+    if target:IsA("BasePart") then return target end
+    if target:IsA("Model") then
+        return target:FindFirstChild("HumanoidRootPart")
+            or target.PrimaryPart
+            or target:FindFirstChild("Handle")
+            or target:FindFirstChild("Head")
+            or target:FindFirstChildWhichIsA("BasePart", true)
+    end
+    return nil
+end
+
+local function removeESPObject(target)
+    local data = ActiveESPRegistry[target]
+    if data then
+        pcall(function()
+            if data.Highlight then data.Highlight.Enabled = false; data.Highlight:Destroy() end
+        end)
+        pcall(function()
+            if data.BoxAdorn then data.BoxAdorn.Visible = false; data.BoxAdorn:Destroy() end
+        end)
+        pcall(function()
+            if data.Billboard then data.Billboard.Enabled = false; data.Billboard:Destroy() end
+        end)
+        pcall(function()
+            if data.Beam then data.Beam.Enabled = false; data.Beam:Destroy() end
+        end)
+        pcall(function()
+            if data.TargetAtt then data.TargetAtt:Destroy() end
+        end)
+        ActiveESPRegistry[target] = nil
+    end
+end
+
+local function clearESPCategory(categoryName)
+    for target, data in pairs(ActiveESPRegistry) do
+        if not categoryName or data.Category == categoryName then
+            removeESPObject(target)
+        end
+    end
+end
+
+local function renderHybridESP(target, category, titleText, fillColor, outlineColor, useTracer)
+    if not target or not target:IsDescendantOf(Workspace) then
+        removeESPObject(target)
+        return
+    end
+
+    local rootPart = getRootPart(target)
+    if not rootPart or not rootPart:IsDescendantOf(Workspace) then
+        removeESPObject(target)
+        return
+    end
+
+    local data = ActiveESPRegistry[target]
+    if data and data.Category ~= category then
+        removeESPObject(target)
+        data = nil
+    end
+
+    if not data then
+        -- 1. Highlight เรืองแสงรอบโมเดล
+        local hl = Instance.new("Highlight")
+        hl.Name = "BS_HL_" .. category
+        hl.Adornee = target
+        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        hl.FillTransparency = (category == "Monster") and 0.25 or 0.5
+        hl.OutlineTransparency = 0
+        hl.Parent = ESPContainer
+
+        -- 2. BoxHandleAdornment 3D ทะลุกำแพง (สำรองอัตโนมัติ ไม่จำกัดจำนวนชิ้นในแมพ)
+        local box = Instance.new("BoxHandleAdornment")
+        box.Name = "BS_BOX_" .. category
+        box.Adornee = rootPart
+        box.AlwaysOnTop = true
+        box.ZIndex = 5
+        box.Size = (category == "Monster" or category == "Player") and Vector3.new(4, 5.5, 2) or (rootPart.Size + Vector3.new(0.4, 0.4, 0.4))
+        box.Transparency = 0.55
+        box.Parent = ESPContainer
+
+        -- 3. ป้ายชื่อและระยะทาง (BillboardGui)
+        local bb = Instance.new("BillboardGui")
+        bb.Name = "BS_BB_" .. category
+        bb.Adornee = rootPart
+        bb.Size = UDim2.new(0, 230, 0, 50)
+        bb.StudsOffset = (category == "Monster" or category == "Player") and Vector3.new(0, 4.2, 0) or Vector3.new(0, 2.5, 0)
+        bb.AlwaysOnTop = true
+        bb.Parent = ESPContainer
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, 0, 1, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.TextStrokeTransparency = 0.1
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = (category == "Monster") and 14 or 12
+        lbl.Parent = bb
+
+        data = {
+            Category = category,
+            Highlight = hl,
+            BoxAdorn = box,
+            Billboard = bb,
+            Label = lbl,
+            Beam = nil,
+            TargetAtt = nil
+        }
+        ActiveESPRegistry[target] = data
+    end
+
+    -- อัปเดตสถานะและสี
+    data.Highlight.Adornee = target
+    data.Highlight.FillColor = fillColor
+    data.Highlight.OutlineColor = outlineColor
+    data.Highlight.Enabled = true
+
+    data.BoxAdorn.Adornee = rootPart
+    data.BoxAdorn.Color3 = fillColor
+    data.BoxAdorn.Visible = true
+
+    data.Billboard.Adornee = rootPart
+    data.Billboard.Enabled = true
+
+    -- คำนวณระยะห่าง
+    local dist = 0
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if myRoot then
+        dist = math.floor((myRoot.Position - rootPart.Position).Magnitude)
+    elseif Camera then
+        dist = math.floor((Camera.CFrame.Position - rootPart.Position).Magnitude)
+    end
+
+    -- แสดงเลือดสำหรับตัวละคร
+    local hpStr = ""
+    if target:IsA("Model") then
+        local hum = target:FindFirstChildOfClass("Humanoid")
+        if hum and hum.MaxHealth > 0 then
+            hpStr = string.format(" | ❤️ %d", math.floor(hum.Health))
+        end
+    end
+
+    data.Label.TextColor3 = (category == "Monster") and outlineColor or fillColor
+    data.Label.Text = string.format("%s\n[%d เมตร%s]", titleText, dist, hpStr)
+
+    -- อัปเดตเส้นชี้เป้า (Beam Tracer)
+    if useTracer and myRoot then
+        local originAtt = myRoot:FindFirstChild("BS_OriginAtt")
+        if not originAtt then
+            originAtt = Instance.new("Attachment")
+            originAtt.Name = "BS_OriginAtt"
+            originAtt.Parent = myRoot
+        end
+
+        if not data.TargetAtt or data.TargetAtt.Parent ~= rootPart then
+            if data.TargetAtt then pcall(function() data.TargetAtt:Destroy() end) end
+            local tAtt = Instance.new("Attachment")
+            tAtt.Name = "BS_TargetAtt"
+            tAtt.Parent = rootPart
+            data.TargetAtt = tAtt
+        end
+
+        if not data.Beam or not data.Beam.Parent then
+            local beam = Instance.new("Beam")
+            beam.Name = "BS_Beam_" .. category
+            beam.FaceCamera = true
+            beam.Color = ColorSequence.new(fillColor, outlineColor)
+            beam.Width0 = 0.14
+            beam.Width1 = 0.22
+            beam.LightEmission = 1
+            beam.Transparency = NumberSequence.new(0.15)
+            beam.Parent = ESPContainer
+            data.Beam = beam
+        end
+
+        data.Beam.Attachment0 = originAtt
+        data.Beam.Attachment1 = data.TargetAtt
+        data.Beam.Enabled = true
+    else
+        if data.Beam then
+            data.Beam.Enabled = false
+        end
+    end
+end
+
+-- ============================================================================
+-- 7. ระบบจำแนก ไอ้ตัวประหลาด, ผู้เล่น, หัวฟักทอง, กุญแจ และเหรียญ
+-- ============================================================================
+local CachedMonsters = {}
+local CachedPumpkins = {}
+local CachedKeys = {}
+local CachedCoins = {}
+
+local function isPlayerMonster(plr)
+    local function scanTools(container)
+        if not container then return nil end
+        for _, item in ipairs(container:GetChildren()) do
+            if item:IsA("Tool") then
+                local ln = string.lower(item.Name)
+                for _, kw in ipairs(BrickStudioConfig.AttackKeywords) do
+                    if string.find(ln, kw) then
+                        return item.Name
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    local foundWeapon = scanTools(plr.Character) or scanTools(plr:FindFirstChild("Backpack"))
+    if foundWeapon then
+        return true, "ถืออาวุธ [" .. foundWeapon .. "]"
+    end
+
+    if plr.Team then
+        local tn = string.lower(plr.Team.Name)
+        for _, kw in ipairs(BrickStudioConfig.MonsterKeywords) do
+            if string.find(tn, kw) then
+                return true, "ทีมตัวประหลาด"
+            end
+        end
+    end
+
+    for k, v in pairs(plr:GetAttributes()) do
+        local combined = string.lower(tostring(k) .. tostring(v))
+        for _, kw in ipairs(BrickStudioConfig.MonsterKeywords) do
+            if string.find(combined, kw) and v ~= false then
+                return true, "สถานะตัวประหลาด"
+            end
+        end
+    end
+
+    for _, valObj in ipairs(plr:GetDescendants()) do
+        if valObj:IsA("StringValue") then
+            local vLower = string.lower(valObj.Value)
+            for _, kw in ipairs(BrickStudioConfig.MonsterKeywords) do
+                if string.find(vLower, kw) then
+                    return true, "บทบาท [" .. valObj.Value .. "]"
+                end
+            end
+        elseif valObj:IsA("BoolValue") and valObj.Value == true then
+            local nLower = string.lower(valObj.Name)
+            for _, kw in ipairs(BrickStudioConfig.MonsterKeywords) do
+                if string.find(nLower, kw) then
+                    return true, "สถานะ [" .. valObj.Name .. "]"
+                end
+            end
+        end
+    end
+
+    if plr.Character then
+        local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+        if hum and hum.HipHeight > 3.2 then
+            return true, "ร่าง The Locust"
+        end
+        for _, child in ipairs(plr.Character:GetChildren()) do
+            local cn = string.lower(child.Name)
+            for _, kw in ipairs(BrickStudioConfig.MonsterKeywords) do
+                if string.find(cn, kw) then
+                    return true, "ร่างจำแลง [" .. child.Name .. "]"
+                end
+            end
+        end
+    end
+
+    return false, ""
+end
+
+local function isNPCMonsterModel(obj)
+    if not obj:IsA("Model") then return false end
+    if Players:GetPlayerFromCharacter(obj) then return false end
+
+    local ln = string.lower(obj.Name)
+    for _, kw in ipairs(BrickStudioConfig.MonsterKeywords) do
+        if string.find(ln, kw) then
+            return true
+        end
+    end
+
+    local hasControl = obj:FindFirstChildOfClass("Humanoid") or obj:FindFirstChildOfClass("AnimationController")
+    local hasRoot = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Torso") or obj:FindFirstChild("UpperTorso")
+    if hasControl and hasRoot then
+        return true
+    end
+    return false
+end
+
+-- ตรวจสอบว่าวัตถุเป็น หัวฟักทอง / กุญแจ / เหรียญ หรือไม่
+local function classifyMapItem(obj)
+    if not obj or not obj:IsDescendantOf(Workspace) then return nil end
+    if not (obj:IsA("BasePart") or obj:IsA("Model") or obj:IsA("Tool")) then return nil end
+    if obj:IsA("Model") and Players:GetPlayerFromCharacter(obj) then return nil end
+
+    -- ข้ามชิ้นส่วนในตัวผู้เล่น
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Character and obj:IsDescendantOf(plr.Character) then
+            return nil
+        end
+    end
+
+    -- ป้องกันการจับซ้ำถ้า Parent เป็น Model ชื่อเดียวกันอยู่แล้ว
+    if obj:IsA("BasePart") and obj.Parent and (obj.Parent:IsA("Model") or obj.Parent:IsA("Tool")) and obj.Parent ~= Workspace then
+        local parentName = string.lower(obj.Parent.Name)
+        for _, list in ipairs({BrickStudioConfig.PumpkinKeywords, BrickStudioConfig.KeyKeywords, BrickStudioConfig.CoinKeywords}) do
+            for _, kw in ipairs(list) do
+                if string.find(parentName, kw) then
+                    return nil -- ให้จับที่ตัว Model/Tool หลักแทน
+                end
+            end
+        end
+    end
+
+    local nameLower = string.lower(obj.Name)
+    local hasInteract = obj:FindFirstChildWhichIsA("TouchTransmitter", true)
+        or obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+        or obj:FindFirstChildWhichIsA("ClickDetector", true)
+        or obj:IsA("Tool")
+        or obj:IsA("MeshPart")
+        or obj:FindFirstChildWhichIsA("SpecialMesh", true)
+
+    if not hasInteract then return nil end
+    if not getRootPart(obj) then return nil end
+
+    -- 1. เช็คหัวฟักทองฮาโลวีน
+    for _, kw in ipairs(BrickStudioConfig.PumpkinKeywords) do
+        if string.find(nameLower, kw) then
+            return "Pumpkin"
+        end
+    end
+
+    -- 2. เช็คกุญแจและไอเทมเปิดทาง
+    for _, kw in ipairs(BrickStudioConfig.KeyKeywords) do
+        if string.find(nameLower, kw) then
+            return "Key"
+        end
+    end
+
+    -- 3. เช็คเหรียญและของดรอป
+    for _, kw in ipairs(BrickStudioConfig.CoinKeywords) do
+        if string.find(nameLower, kw) then
+            return "Coin"
+        end
+    end
+
+    return nil
+end
+
+local function rescanMapObjects()
+    local newMonsters = {}
+    local newPumpkins = {}
+    local newKeys = {}
+    local newCoins = {}
+
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        pcall(function()
+            if obj:IsA("Model") and isNPCMonsterModel(obj) then
+                table.insert(newMonsters, obj)
+            else
+                local itemType = classifyMapItem(obj)
+                if itemType == "Pumpkin" then
+                    table.insert(newPumpkins, obj)
+                elseif itemType == "Key" then
+                    table.insert(newKeys, obj)
+                elseif itemType == "Coin" then
+                    table.insert(newCoins, obj)
+                end
+            end
+        end)
+    end
+
+    CachedMonsters = newMonsters
+    CachedPumpkins = newPumpkins
+    CachedKeys = newKeys
+    CachedCoins = newCoins
+end
+
+-- ฟังก์ชันอัปเดต ESP ทั้งหมดแบบทันที
+local function refreshAllESPNow()
+    local closestMonsterDist = math.huge
+    local closestMonsterName = "ไม่พบในระยะ"
+    local validTargets = {}
+
+    -- 1. ผู้เล่น & ตัวประหลาดที่เป็นผู้เล่น
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:IsDescendantOf(Workspace) then
+            pcall(function()
+                local char = plr.Character
+                local isMonster, reason = isPlayerMonster(plr)
+                if isMonster then
+                    if BrickStudioConfig.ESP.MonsterESP then
+                        validTargets[char] = true
+                        renderHybridESP(
+                            char,
+                            "Monster",
+                            "👹 ไอ้ตัวประหลาด: " .. plr.Name .. " (" .. reason .. ")",
+                            BrickStudioConfig.Colors.MonsterFill,
+                            BrickStudioConfig.Colors.MonsterOutline,
+                            BrickStudioConfig.ESP.MonsterTracer
+                        )
+                    else
+                        removeESPObject(char)
+                    end
+
+                    local root = getRootPart(char)
+                    local myRoot = LocalPlayer.Character and getRootPart(LocalPlayer.Character)
+                    if root and myRoot then
+                        local d = math.floor((myRoot.Position - root.Position).Magnitude)
+                        if d < closestMonsterDist then
+                            closestMonsterDist = d
+                            closestMonsterName = plr.Name
+                        end
+                    end
+                else
+                    if BrickStudioConfig.ESP.PlayerESP then
+                        validTargets[char] = true
+                        renderHybridESP(
+                            char,
+                            "Player",
+                            "👤 ผู้เล่น: " .. plr.Name,
+                            BrickStudioConfig.Colors.PlayerFill,
+                            BrickStudioConfig.Colors.PlayerOutline,
+                            false
+                        )
+                    else
+                        removeESPObject(char)
+                    end
+                end
+            end)
+        end
+    end
+
+    -- 2. ตัวประหลาดที่เป็น NPC
+    for _, npc in ipairs(CachedMonsters) do
+        if npc and npc:IsDescendantOf(Workspace) then
+            pcall(function()
+                if BrickStudioConfig.ESP.MonsterESP then
+                    validTargets[npc] = true
+                    renderHybridESP(
+                        npc,
+                        "Monster",
+                        "👹 ไอ้ตัวประหลาด [" .. npc.Name .. "]",
+                        BrickStudioConfig.Colors.MonsterFill,
+                        BrickStudioConfig.Colors.MonsterOutline,
+                        BrickStudioConfig.ESP.MonsterTracer
+                    )
+                else
+                    removeESPObject(npc)
+                end
+
+                local root = getRootPart(npc)
+                local myRoot = LocalPlayer.Character and getRootPart(LocalPlayer.Character)
+                if root and myRoot then
+                    local d = math.floor((myRoot.Position - root.Position).Magnitude)
+                    if d < closestMonsterDist then
+                        closestMonsterDist = d
+                        closestMonsterName = npc.Name
+                    end
+                end
+            end)
+        end
+    end
+
+    -- 3. หัวฟักทองฮาโลวีน
+    if BrickStudioConfig.ESP.PumpkinESP then
+        for _, pumpkin in ipairs(CachedPumpkins) do
+            if pumpkin and pumpkin:IsDescendantOf(Workspace) then
+                pcall(function()
+                    validTargets[pumpkin] = true
+                    renderHybridESP(
+                        pumpkin,
+                        "Pumpkin",
+                        "🎃 หัวฟักทอง [" .. pumpkin.Name .. "]",
+                        BrickStudioConfig.Colors.PumpkinFill,
+                        BrickStudioConfig.Colors.PumpkinOutline,
+                        false
+                    )
+                end)
+            end
+        end
+    end
+
+    -- 4. กุญแจและเหรียญ
+    if BrickStudioConfig.ESP.KeyAndCoinESP then
+        for _, keyObj in ipairs(CachedKeys) do
+            if keyObj and keyObj:IsDescendantOf(Workspace) then
+                pcall(function()
+                    validTargets[keyObj] = true
+                    renderHybridESP(
+                        keyObj,
+                        "KeyCoin",
+                        "🔑 กุญแจ/ไอเทมสำคัญ [" .. keyObj.Name .. "]",
+                        BrickStudioConfig.Colors.KeyFill,
+                        BrickStudioConfig.Colors.KeyOutline,
+                        BrickStudioConfig.ESP.KeyTracer
+                    )
+                end)
+            end
+        end
+
+        for _, coinObj in ipairs(CachedCoins) do
+            if coinObj and coinObj:IsDescendantOf(Workspace) then
+                pcall(function()
+                    validTargets[coinObj] = true
+                    renderHybridESP(
+                        coinObj,
+                        "KeyCoin",
+                        "💰 เหรียญ/โบนัส [" .. coinObj.Name .. "]",
+                        BrickStudioConfig.Colors.CoinFill,
+                        BrickStudioConfig.Colors.CoinOutline,
+                        false
+                    )
+                end)
+            end
+        end
+    end
+
+    -- ล้าง ESP ของวัตถุที่ถูกเก็บไปแล้วหรือถูกปิดสวิตช์
+    for target, _ in pairs(ActiveESPRegistry) do
+        if not validTargets[target] or not target:IsDescendantOf(Workspace) then
+            removeESPObject(target)
+        end
+    end
+
+    -- อัปเดตแถบเรดาร์ด้านบนหน้าจอ
+    if BrickStudioConfig.ESP.DangerRadar then
+        local pCount = #CachedPumpkins
+        local kCount = #CachedKeys
+        if closestMonsterDist < math.huge then
+            if closestMonsterDist <= 45 then
+                RadarStroke.Color = Color3.fromRGB(255, 0, 50)
+                RadarLabel.TextColor3 = Color3.fromRGB(255, 85, 85)
+                RadarLabel.Text = string.format("🚨 อันตราย! [%s] ห่าง %d ม. | 🎃 ฟักทอง: %d | 🔑 กุญแจ: %d", closestMonsterName, closestMonsterDist, pCount, kCount)
+            else
+                RadarStroke.Color = Color3.fromRGB(0, 255, 140)
+                RadarLabel.TextColor3 = Color3.fromRGB(220, 255, 225)
+                RadarLabel.Text = string.format("👹 [%s]: %d ม. | 🎃 ฟักทอง: %d | 🔑 กุญแจ: %d", closestMonsterName, closestMonsterDist, pCount, kCount)
+            end
+        else
+            RadarStroke.Color = Color3.fromRGB(0, 200, 255)
+            RadarLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            RadarLabel.Text = string.format("🟢 ปลอดภัย | 🎃 หัวฟักทอง: %d | 🔑 กุญแจ: %d | 💰 เหรียญ: %d", pCount, kCount, #CachedCoins)
+        end
+    end
+
+    return closestMonsterDist
+end
+
+-- ============================================================================
+-- 8. ระบบส่งสัญญาณเซิร์ฟเวอร์เพื่อเก็บของ (ไม่ต้องวาร์ป) & ระบบวาร์ปเก็บหัวฟักทอง
+-- ============================================================================
+local DiscoveredRemotes = {}
+local RemoteNamesList = {}
+local ConnectedListeners = {}
+local LastCapturedRemote = nil
+local LastCapturedArgs = {}
+local SafeZoneSavedCFrame = nil
+
+local function fireMatchingRemotes(keywords, ...)
+    local args = {...}
+    local count = 0
+    for _, rem in pairs(DiscoveredRemotes) do
+        if rem and rem:IsA("RemoteEvent") then
+            local ln = string.lower(rem.Name)
+            for _, kw in ipairs(keywords) do
+                if string.find(ln, kw) then
+                    pcall(function()
+                        rem:FireServer(table.unpack(args))
+                    end)
+                    count += 1
+                    break
+                end
+            end
+        end
+    end
+    return count
+end
+
+-- ฟังก์ชันส่งสัญญาณไปเก็บวัตถุที่ระบุโดย "ไม่ต้องวาร์ปตัวละครของเรา"
+local function sendServerSignalToCollectItem(itemObj)
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot or not itemObj or not itemObj:IsDescendantOf(Workspace) then return false end
+
+    local targetPart = getRootPart(itemObj)
+    if not targetPart then return false end
+
+    local env = (getfenv and getfenv()) or _G
+    local fireTouch = env.firetouchinterest
+    local firePrompt = env.fireproximityprompt
+    local fireClick = env.fireclickdetector
+
+    -- วิธีที่ 1: ส่งแพ็กเกจ TouchTransmitter ไปยังเซิร์ฟเวอร์โดยตรง
+    pcall(function()
+        if typeof(fireTouch) == "function" then
+            fireTouch(myRoot, targetPart, 0)
+            fireTouch(myRoot, targetPart, 1)
+        end
+        for _, desc in ipairs(itemObj:GetDescendants()) do
+            if desc:IsA("TouchTransmitter") and desc.Parent and desc.Parent:IsA("BasePart") then
+                if typeof(fireTouch) == "function" then
+                    fireTouch(myRoot, desc.Parent, 0)
+                    fireTouch(myRoot, desc.Parent, 1)
+                end
+            end
+        end
+    end)
+
+    -- วิธีที่ 2: สั่งกด ProximityPrompt / ClickDetector บนตัวไอเทมจากระยะไกล
+    pcall(function()
+        local prompt = itemObj:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if prompt then
+            if typeof(firePrompt) == "function" then
+                firePrompt(prompt)
+            else
+                prompt:InputHoldBegin()
+                prompt:InputHoldEnd()
+            end
+        end
+        local click = itemObj:FindFirstChildWhichIsA("ClickDetector", true)
+        if click and typeof(fireClick) == "function" then
+            fireClick(click)
+        end
+    end)
+
+    -- วิธีที่ 3: ดึงฮิตบ็อกซ์ของไอเทมมาแตะตัวเราแบบเงียบๆ (ตัวเราไม่วาร์ปไปไหน)
+    pcall(function()
+        targetPart.CanCollide = false
+        targetPart.CFrame = myRoot.CFrame
+    end)
+
+    -- วิธีที่ 4: ยิง RemoteEvent ที่อยู่ในตัวไอเทม (ถ้ามี)
+    pcall(function()
+        for _, rem in ipairs(itemObj:GetDescendants()) do
+            if rem:IsA("RemoteEvent") then
+                rem:FireServer()
+                rem:FireServer(itemObj)
+            end
+        end
+    end)
+
+    return true
+end
+
+-- ส่งสัญญาณเก็บ "กุญแจและเหรียญ" ทั้งหมดในแมพ (ไม่ต้องวาร์ป)
+local function collectAllKeysAndCoinsBySignal(silent)
+    rescanMapObjects()
+    local total = 0
+
+    for _, keyObj in ipairs(CachedKeys) do
+        if sendServerSignalToCollectItem(keyObj) then
+            total += 1
+        end
+    end
+
+    for _, coinObj in ipairs(CachedCoins) do
+        if sendServerSignalToCollectItem(coinObj) then
+            total += 1
+        end
+    end
+
+    -- ยิง RemoteEvent ของเซิร์ฟเวอร์ที่เกี่ยวกับกุญแจและเหรียญ
+    total += fireMatchingRemotes({"key", "coin", "collect", "pickup", "grab", "item", "loot", "drop", "take", "unlock"})
+
+    if not silent then
+        sendBrickStudioNotification("🔑 ส่งสัญญาณเก็บกุญแจ & เหรียญไปยังเซิร์ฟเวอร์แล้ว (" .. tostring(total) .. " รายการ โดยไม่ต้องวาร์ป!)", 4)
+    end
+end
+
+-- ส่งสัญญาณเก็บ "หัวฟักทองฮาโลวีน" ทั้งหมดในแมพ (แบบที่ 1: ไม่ต้องวาร์ป)
+local function collectAllPumpkinsBySignal(silent)
+    rescanMapObjects()
+    local total = 0
+
+    for _, pumpkin in ipairs(CachedPumpkins) do
+        if sendServerSignalToCollectItem(pumpkin) then
+            total += 1
+        end
+    end
+
+    -- ยิง RemoteEvent ของอีเว้นท์ฮาโลวีนไปยังเซิร์ฟเวอร์
+    total += fireMatchingRemotes({"pumpkin", "halloween", "candy", "treat", "event", "lantern", "head", "collect", "pickup", "claim"})
+
+    if not silent then
+        sendBrickStudioNotification("🎃 ส่งสัญญาณเก็บหัวฟักทองไปยังเซิร์ฟเวอร์แล้ว (" .. tostring(total) .. " จุด โดยไม่ต้องวาร์ป!)", 4)
+    end
+end
+
+-- วาร์ปไปเก็บ "หัวฟักทองฮาโลวีน" ทั้งหมดในแมพแล้วกลับจุดเดิม (แบบที่ 2: วาร์ปไปเก็บ)
+local isTeleportFarmingPumpkins = false
+local function collectAllPumpkinsByTeleport()
+    if isTeleportFarmingPumpkins then return end
+    isTeleportFarmingPumpkins = true
+
+    pcall(function()
+        rescanMapObjects()
+        local myChar = LocalPlayer.Character
+        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        if not myRoot then
+            sendBrickStudioNotification("❌ ไม่พบตัวละครของคุณบอส!", 3)
+            isTeleportFarmingPumpkins = false
+            return
+        end
+
+        if #CachedPumpkins == 0 then
+            sendBrickStudioNotification("🎃 ไม่พบหัวฟักทองในแมพตอนนี้ครับคุณบอส", 3)
+            isTeleportFarmingPumpkins = false
+            return
+        end
+
+        local savedCF = myRoot.CFrame
+        local count = 0
+        sendBrickStudioNotification("🚀 กำลังวาร์ปไปเก็บหัวฟักทองทั้งหมด " .. tostring(#CachedPumpkins) .. " จุด...", 4)
+
+        for _, pumpkin in ipairs(CachedPumpkins) do
+            if pumpkin and pumpkin:IsDescendantOf(Workspace) then
+                local part = getRootPart(pumpkin)
+                if part and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                    LocalPlayer.Character.HumanoidRootPart.CFrame = part.CFrame + Vector3.new(0, 2, 0)
+                    task.wait(0.12)
+                    sendServerSignalToCollectItem(pumpkin)
+                    count += 1
+                    task.wait(0.08)
+                end
+            end
+        end
+
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = savedCF
+        end
+
+        sendBrickStudioNotification("✅ วาร์ปเก็บหัวฟักทองครบ " .. tostring(count) .. " จุด และกลับที่เดิมเรียบร้อย!", 4)
+    end)
+
+    isTeleportFarmingPumpkins = false
+end
+
+-- ============================================================================
+-- 9. 4 ระบบส่งสัญญาณเซิร์ฟเวอร์หลัก & ระบบดักจับสัญญาณเซิร์ฟเวอร์
+-- ============================================================================
+
+-- [สัญญาณเซิร์ฟเวอร์ที่ 1]: สั่งกดสวิตช์/เปิดประตู/ทำภารกิจทั่วแมพ
+local function triggerServerSignal1_Interact(silent)
+    local count = 0
+    local env = (getfenv and getfenv()) or _G
+    local firePrompt = env.fireproximityprompt
+    local fireClick = env.fireclickdetector
+
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("ProximityPrompt") and obj.Enabled then
+            pcall(function()
+                if typeof(firePrompt) == "function" then
+                    firePrompt(obj)
+                else
+                    obj:InputHoldBegin()
+                    obj:InputHoldEnd()
+                end
+            end)
+            count += 1
+        elseif obj:IsA("ClickDetector") then
+            pcall(function()
+                if typeof(fireClick) == "function" then
+                    fireClick(obj)
+                end
+            end)
+            count += 1
+        end
+    end
+
+    count += fireMatchingRemotes({"interact", "door", "switch", "lever", "button", "prompt", "generator", "task", "use", "open", "unlock"})
+
+    if not silent then
+        sendBrickStudioNotification("📡 [สัญญาณที่ 1] ส่งสัญญาณเปิดประตู/กดสวิตช์ทั่วแมพ (" .. tostring(count) .. " จุด)", 3)
+    end
+end
+
+-- [สัญญาณเซิร์ฟเวอร์ที่ 2]: ส่งสัญญาณดึงเก็บไอเทมทุกชนิดในแมพ (กุญแจ + เหรียญ + หัวฟักทอง)
+local function triggerServerSignal2_CollectAll(silent)
+    collectAllKeysAndCoinsBySignal(true)
+    collectAllPumpkinsBySignal(true)
+    if not silent then
+        sendBrickStudioNotification("💰 [สัญญาณที่ 2] ส่งสัญญาณเก็บกุญแจ เหรียญ และหัวฟักทองทั้งหมดแล้ว!", 3)
+    end
+end
+
+-- [สัญญาณเซิร์ฟเวอร์ที่ 3]: ส่งสัญญาณโจมตี/สตั๊นตัวประหลาดระยะไกล
+local function triggerServerSignal3_Combat(silent)
+    local targetMonster = CachedMonsters[1]
+    if not targetMonster then
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character and isPlayerMonster(plr) then
+                targetMonster = plr.Character
+                break
+            end
+        end
+    end
+
+    local targetHum = targetMonster and targetMonster:FindFirstChildOfClass("Humanoid")
+    local targetRoot = targetMonster and getRootPart(targetMonster)
+
+    if LocalPlayer.Character then
+        for _, item in ipairs(LocalPlayer.Character:GetChildren()) do
+            if item:IsA("Tool") then
+                pcall(function() item:Activate() end)
+                for _, rem in ipairs(item:GetDescendants()) do
+                    if rem:IsA("RemoteEvent") then
+                        pcall(function()
+                            if targetRoot and targetHum then
+                                rem:FireServer(targetRoot.Position, targetRoot, targetHum)
+                                rem:FireServer(targetHum)
+                            else
+                                rem:FireServer()
+                            end
+                        end)
+                    end
+                end
+            end
+        end
+    end
+
+    if targetRoot and targetHum then
+        fireMatchingRemotes({"hit", "damage", "attack", "slash", "shoot", "fire", "stun", "punch", "swing"}, targetHum, targetRoot.Position)
+    else
+        fireMatchingRemotes({"hit", "damage", "attack", "slash", "shoot", "fire", "stun", "punch", "swing"})
+    end
+
+    if not silent then
+        sendBrickStudioNotification("⚔️ [สัญญาณที่ 3] ส่งสัญญาณโจมตี/สตั๊นไปยังเซิร์ฟเวอร์แล้ว!", 3)
+    end
+end
+
+-- [สัญญาณเซิร์ฟเวอร์ที่ 4]: ส่งสัญญาณเข้าเกมไว/เกิดใหม่/รับรางวัลรอบเกม
+local function triggerServerSignal4_RoundState(silent)
+    local count = fireMatchingRemotes({"ready", "join", "spawn", "respawn", "play", "start", "reward", "claim", "daily", "vote", "revive"}, true)
+    if not silent then
+        sendBrickStudioNotification("🔄 [สัญญาณที่ 4] ส่งสัญญาณเกิดใหม่/เข้าเกม/รับรางวัล (" .. tostring(count) .. " สัญญาณ)", 3)
+    end
+end
+
+-- สแกนและดักฟังสัญญาณเซิร์ฟเวอร์ทั้งหมด
+local function scanAndHookServerSignals()
+    table.clear(DiscoveredRemotes)
+    table.clear(RemoteNamesList)
+
+    for _, container in ipairs({ReplicatedStorage, Workspace, PlayerGui}) do
+        if container then
+            for _, obj in ipairs(container:GetDescendants()) do
+                if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+                    local fullName = obj.Name .. " [" .. obj.ClassName .. "]"
+                    DiscoveredRemotes[fullName] = obj
+                    table.insert(RemoteNamesList, fullName)
+
+                    if obj:IsA("RemoteEvent") and not ConnectedListeners[obj] then
+                        ConnectedListeners[obj] = obj.OnClientEvent:Connect(function(...)
+                            if not BrickStudioConfig.ServerSignals.ListenSignals then return end
+                            local args = {...}
+                            local summary = ""
+                            for i = 1, math.min(#args, 4) do
+                                summary = summary .. tostring(args[i]) .. (i < math.min(#args, 4) and ", " or "")
+                            end
+                            print(string.format("[Brick Studio Signal] เซิร์ฟเวอร์ส่งสัญญาณ -> %s | ข้อมูล: %s", obj.Name, summary))
+
+                            if BrickStudioConfig.ServerSignals.NotifyOnSignal then
+                                local lower = string.lower(obj.Name .. summary)
+                                if string.find(lower, "locust") or string.find(lower, "monster") or string.find(lower, "key") or string.find(lower, "pumpkin") or string.find(lower, "role") then
+                                    sendBrickStudioNotification("📡 สัญญาณจากเซิร์ฟ: " .. obj.Name .. " (" .. summary .. ")", 3)
+                                end
+                            end
+                        end)
+                    end
+                end
+            end
+        end
+    end
+
+    if #RemoteNamesList == 0 then
+        table.insert(RemoteNamesList, "ไม่พบ RemoteEvent")
+    elseif BrickStudioConfig.ServerSignals.SelectedRemoteName == "" then
+        BrickStudioConfig.ServerSignals.SelectedRemoteName = RemoteNamesList[1]
+    end
+end
+
+-- ดักจำแพ็กเกจล่าสุดที่ส่งไปเซิร์ฟเวอร์เพื่อทำ Auto-Replay
+pcall(function()
+    local env = (getfenv and getfenv()) or _G
+    if typeof(env.hookmetamethod) == "function" and typeof(env.getnamecallmethod) == "function" then
+        local oldNamecall
+        oldNamecall = env.hookmetamethod(game, "__namecall", function(self, ...)
+            local method = env.getnamecallmethod()
+            if method == "FireServer" and self:IsA("RemoteEvent") then
+                local ln = string.lower(self.Name)
+                if not string.find(ln, "character") and not string.find(ln, "footstep") and not string.find(ln, "camera") then
+                    LastCapturedRemote = self
+                    LastCapturedArgs = {...}
+                end
+            end
+            return oldNamecall(self, ...)
+        end)
+    end
+end)
+
+local function fireSelectedCustomRemote()
+    local selectedKey = BrickStudioConfig.ServerSignals.SelectedRemoteName
+    local remoteObj = DiscoveredRemotes[selectedKey]
+    if not remoteObj then
+        sendBrickStudioNotification("❌ กรุณาเลือกสัญญาณ Remote ก่อนครับคุณบอส", 3)
+        return
+    end
+    local argText = BrickStudioConfig.ServerSignals.CustomSignalArg
+    task.spawn(function()
+        pcall(function()
+            if remoteObj:IsA("RemoteEvent") then
+                if argText ~= "" then remoteObj:FireServer(argText) else remoteObj:FireServer() end
+            elseif remoteObj:IsA("RemoteFunction") then
+                if argText ~= "" then remoteObj:InvokeServer(argText) else remoteObj:InvokeServer() end
+            end
+        end)
+        sendBrickStudioNotification("⚡ ยิงสัญญาณไปยังเซิร์ฟเวอร์แล้ว: " .. remoteObj.Name, 3)
+    end)
+end
+
+scanAndHookServerSignals()
+
+-- ฟังก์ชันขยายฮิตบ็อกซ์ฝั่งเซิร์ฟเวอร์ (Hitbox Expander)
+local function applyHitboxExpander(enabled)
+    local sz = BrickStudioConfig.ServerSignals.HitboxSize
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            pcall(function()
+                local root = plr.Character:FindFirstChild("HumanoidRootPart")
+                if root and root:IsA("BasePart") then
+                    if enabled then
+                        root.Size = Vector3.new(sz, sz, sz)
+                        root.Transparency = 0.65
+                        root.CanCollide = false
+                    else
+                        root.Size = Vector3.new(2, 2, 1)
+                        root.Transparency = 1
+                    end
+                end
+            end)
+        end
+    end
+    for _, npc in ipairs(CachedMonsters) do
+        if npc and npc:IsDescendantOf(Workspace) then
+            pcall(function()
+                local root = getRootPart(npc)
+                if root and root:IsA("BasePart") then
+                    if enabled then
+                        root.Size = Vector3.new(sz, sz, sz)
+                        root.Transparency = 0.65
+                        root.CanCollide = false
+                    else
+                        root.Size = Vector3.new(2, 2, 1)
+                        root.Transparency = 1
+                    end
+                end
+            end)
+        end
+    end
+end
+
+-- ฟังก์ชันความสว่างและลดแลค
+local function applyFullbright(enabled)
+    if enabled then
+        Lighting.Brightness = 3
+        Lighting.ClockTime = 14
+        Lighting.FogEnd = 100000
+        Lighting.GlobalShadows = false
+        Lighting.Ambient = Color3.fromRGB(225, 225, 225)
+        Lighting.OutdoorAmbient = Color3.fromRGB(225, 225, 225)
+        for _, eff in ipairs(Lighting:GetChildren()) do
+            if eff:IsA("Atmosphere") or eff:IsA("PostEffect") then
+                eff.Enabled = false
+            end
+        end
+    else
+        Lighting.Brightness = OriginalLighting.Brightness
+        Lighting.ClockTime = OriginalLighting.ClockTime
+        Lighting.FogEnd = OriginalLighting.FogEnd
+        Lighting.GlobalShadows = OriginalLighting.GlobalShadows
+        Lighting.Ambient = OriginalLighting.Ambient
+        Lighting.OutdoorAmbient = OriginalLighting.OutdoorAmbient
+    end
+end
+
+local function optimizePerformance()
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 9e9
+    pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        pcall(function()
+            if obj:IsA("BasePart") and not obj:IsA("MeshPart") then
+                obj.Material = Enum.Material.SmoothPlastic
+                obj.Reflectance = 0
+                obj.CastShadow = false
+            elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                obj.Transparency = 1
+            elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") then
+                obj.Enabled = false
+            end
+        end)
+    end
+    sendBrickStudioNotification("⚡ ลดแลคและปรับแต่ง FPS สูงสุดแล้วคุณบอส!", 4)
+end
+
+-- ============================================================================
+-- 10. สร้างหน้าต่างเมนูหลัก Brick Studio (4 แท็บครบทุกฟังก์ชัน)
+-- ============================================================================
+local success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet("https://sirius.menu/rayfield"))()
+end)
+
+if success and Rayfield then
+    local Window = Rayfield:CreateWindow({
+        Name = BrickStudioConfig.Title,
+        LoadingTitle = BrickStudioConfig.Title,
+        LoadingSubtitle = BrickStudioConfig.WelcomeMessage,
+        ConfigurationSaving = {
+            Enabled = false
+        },
+        KeySystem = false
+    })
+
+    -- ========================================================================
+    -- แท็บที่ 1: 👹 Ultra ESP V5 (เปิด-ปิดได้ทันที 100%)
+    -- ========================================================================
+    local ESPTab = Window:CreateTab("👹 Ultra ESP V5", 4483362458)
+
+    ESPTab:CreateSection("ระบบ ESP แบบใหม่ (เปิด-ปิดได้ทันที ไม่ต้องรันซ้ำ)")
+
+    ESPTab:CreateToggle({
+        Name = "👹 ESP ไอ้ตัวประหลาด (Highlight + กรอบ 3D + ระยะ)",
+        CurrentValue = true,
+        Callback = function(Value)
+            BrickStudioConfig.ESP.MonsterESP = Value
+            if not Value then
+                clearESPCategory("Monster")
+            else
+                refreshAllESPNow()
+            end
+        end,
+    })
+
+    ESPTab:CreateToggle({
+        Name = "📏 เส้นชี้เป้าตัวประหลาด (Beam Tracer)",
+        CurrentValue = true,
+        Callback = function(Value)
+            BrickStudioConfig.ESP.MonsterTracer = Value
+            refreshAllESPNow()
+        end,
+    })
+
+    ESPTab:CreateToggle({
+        Name = "👤 ESP ผู้เล่น (แสดงชื่อ + เลือด + ระยะห่าง)",
+        CurrentValue = true,
+        Callback = function(Value)
+            BrickStudioConfig.ESP.PlayerESP = Value
+            if not Value then
+                clearESPCategory("Player")
+            else
+                refreshAllESPNow()
+            end
+        end,
+    })
+
+    ESPTab:CreateToggle({
+        Name = "🎃 ESP หัวฟักทองฮาโลวีน (เรืองแสงสีส้มทะลุกำแพง)",
+        CurrentValue = true,
+        Callback = function(Value)
+            BrickStudioConfig.ESP.PumpkinESP = Value
+            if not Value then
+                clearESPCategory("Pumpkin")
+            else
+                rescanMapObjects()
+                refreshAllESPNow()
+            end
+        end,
+    })
+
+    ESPTab:CreateToggle({
+        Name = "🔑 ESP กุญแจ & 💰 เหรียญ (เรืองแสงสีฟ้า/ทอง)",
+        CurrentValue = true,
+        Callback = function(Value)
+            BrickStudioConfig.ESP.KeyAndCoinESP = Value
+            if not Value then
+                clearESPCategory("KeyCoin")
+            else
+                rescanMapObjects()
+                refreshAllESPNow()
+            end
+        end,
+    })
+
+    ESPTab:CreateToggle({
+        Name = "📏 เส้นชี้เป้าไปหากุญแจ (Key Beam Tracer)",
+        CurrentValue = true,
+        Callback = function(Value)
+            BrickStudioConfig.ESP.KeyTracer = Value
+            refreshAllESPNow()
+        end,
+    })
+
+    ESPTab:CreateToggle({
+        Name = "📡 แถบเรดาร์แจ้งเตือนด้านบนจอ (Danger & Item Radar)",
+        CurrentValue = true,
+        Callback = function(Value)
+            BrickStudioConfig.ESP.DangerRadar = Value
+            RadarScreen.Enabled = Value
+        end,
+    })
+
+    ESPTab:CreateButton({
+        Name = "🔄 รีเซ็ตและสแกน ESP ทั้งแมพใหม่ทันที",
+        Callback = function()
+            clearESPCategory(nil)
+            rescanMapObjects()
+            refreshAllESPNow()
+            sendBrickStudioNotification("รีเฟรชระบบ Ultra ESP ทั้งหมดเรียบร้อยแล้วคุณบอส!", 3)
+        end,
+    })
+
+    ESPTab:CreateSection("💡 ความสว่างและลดแลค")
+
+    ESPTab:CreateToggle({
+        Name = "☀️ เพิ่มความสว่างสูงสุด (Fullbright ไร้หมอกมืด)",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.ESP.Fullbright = Value
+            applyFullbright(Value)
+        end,
+    })
+
+    ESPTab:CreateButton({
+        Name = "⚡ ลดความแลคขั้นสุด (Boost FPS / ลบเอฟเฟกต์หนักเครื่อง)",
+        Callback = function()
+            optimizePerformance()
+        end,
+    })
+
+    -- ========================================================================
+    -- แท็บที่ 2: 🎃 ฮาโลวีน & 🔑 กุญแจ/เหรียญ (ส่งสัญญาณเก็บ & วาร์ปเก็บ)
+    -- ========================================================================
+    local EventTab = Window:CreateTab("🎃 ฟักทอง & 🔑 กุญแจ", 4483362458)
+
+    EventTab:CreateSection("🔑 ระบบส่งสัญญาณเก็บกุญแจ & 💰 เหรียญ (ไม่ต้องวาร์ป)")
+
+    EventTab:CreateButton({
+        Name = "🔑 ส่งสัญญาณเก็บกุญแจ & เหรียญทั้งหมดทันที (ไม่วาร์ป)",
+        Callback = function()
+            collectAllKeysAndCoinsBySignal(false)
+        end,
+    })
+
+    EventTab:CreateToggle({
+        Name = "🔄 เปิดส่งสัญญาณเก็บกุญแจ & เหรียญอัตโนมัติ (ไม่วาร์ป)",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.CollectSystem.AutoSignalKeysCoins = Value
+        end,
+    })
+
+    EventTab:CreateSection("🎃 เก็บหัวฟักทอง: ระบบที่ 1 ส่งสัญญาณไปเก็บ (ไม่ต้องวาร์ป)")
+
+    EventTab:CreateButton({
+        Name = "📡 ส่งสัญญาณเก็บหัวฟักทองทั้งหมดทันที (ยืนอยู่กับที่ไม่ต้องวาร์ป)",
+        Callback = function()
+            collectAllPumpkinsBySignal(false)
+        end,
+    })
+
+    EventTab:CreateToggle({
+        Name = "🔄 เปิดส่งสัญญาณเก็บหัวฟักทองอัตโนมัติ (ไม่วาร์ป)",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.CollectSystem.AutoSignalPumpkins = Value
+        end,
+    })
+
+    EventTab:CreateSection("🎃 เก็บหัวฟักทอง: ระบบที่ 2 วาร์ปไปเก็บครบทุกจุด")
+
+    EventTab:CreateButton({
+        Name = "🚀 วาร์ปไปเก็บหัวฟักทองทั้งแมพแล้วกลับจุดเดิมทันที",
+        Callback = function()
+            task.spawn(collectAllPumpkinsByTeleport)
+        end,
+    })
+
+    EventTab:CreateToggle({
+        Name = "🔄 เปิดวาร์ปเก็บหัวฟักทองอัตโนมัติต่อเนื่อง (Auto TP Farm)",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.CollectSystem.AutoTeleportPumpkins = Value
+        end,
+    })
+
+    -- ========================================================================
+    -- แท็บที่ 3: 📡 4 สัญญาณเซิร์ฟเวอร์ & ระบบโกงฝั่งเซิร์ฟเวอร์
+    -- ========================================================================
+    local ServerTab = Window:CreateTab("📡 ระบบฝั่งเซิร์ฟเวอร์", 4483362458)
+
+    ServerTab:CreateSection("🔥 4 ระบบส่งสัญญาณเซิร์ฟเวอร์หลัก")
+
+    ServerTab:CreateButton({
+        Name = "📡 [สัญญาณที่ 1] สั่งเปิดประตู/กดสวิตช์/ทำภารกิจทั่วแมพ",
+        Callback = function()
+            triggerServerSignal1_Interact(false)
+        end,
+    })
+
+    ServerTab:CreateToggle({
+        Name = "🔄 ออโต้ [สัญญาณที่ 1: เปิดประตู/กดสวิตช์ระยะไกล]",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.ServerSignals.AutoSignal1_Interact = Value
+        end,
+    })
+
+    ServerTab:CreateButton({
+        Name = "💰 [สัญญาณที่ 2] ส่งสัญญาณรวบเก็บไอเทมทุกชนิดในแมพ",
+        Callback = function()
+            triggerServerSignal2_CollectAll(false)
+        end,
+    })
+
+    ServerTab:CreateToggle({
+        Name = "🔄 ออโต้ [สัญญาณที่ 2: ส่งสัญญาณรวบเก็บของทั้งแมพ]",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.ServerSignals.AutoSignal2_CollectAll = Value
+        end,
+    })
+
+    ServerTab:CreateButton({
+        Name = "⚔️ [สัญญาณที่ 3] ส่งสัญญาณโจมตี/สตั๊นตัวประหลาดระยะไกล",
+        Callback = function()
+            triggerServerSignal3_Combat(false)
+        end,
+    })
+
+    ServerTab:CreateToggle({
+        Name = "🔄 ออโต้ [สัญญาณที่ 3: โจมตี/สตั๊นตัวประหลาด]",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.ServerSignals.AutoSignal3_Combat = Value
+        end,
+    })
+
+    ServerTab:CreateButton({
+        Name = "🔄 [สัญญาณที่ 4] ส่งสัญญาณเกิดใหม่/เข้าเกมไว/รับรางวัล",
+        Callback = function()
+            triggerServerSignal4_RoundState(false)
+        end,
+    })
+
+    ServerTab:CreateToggle({
+        Name = "🔄 ออโต้ [สัญญาณที่ 4: เกิดใหม่/เข้าเกมไว/รับรางวัล]",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.ServerSignals.AutoSignal4_RoundState = Value
+        end,
+    })
+
+    ServerTab:CreateSection("🛡️ ระบบเอาชีวิตรอดและขยายฮิตบ็อกซ์ฝั่งเซิร์ฟเวอร์")
+
+    ServerTab:CreateToggle({
+        Name = "⚡ หลบตัวประหลาดอัตโนมัติเมื่อเข้าประชิด (Server Auto-Dodge)",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.ServerSignals.AutoDodgeMonster = Value
+        end,
+    })
+
+    ServerTab:CreateToggle({
+        Name = "🎯 ขยายฮิตบ็อกซ์ฝั่งเซิร์ฟเวอร์ (จ้วงไกลขึ้น / ยิงโดนง่ายขึ้น)",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.ServerSignals.HitboxExpander = Value
+            applyHitboxExpander(Value)
+        end,
+    })
+
+    ServerTab:CreateSlider({
+        Name = "ขนาดฮิตบ็อกซ์ (Hitbox Size)",
+        Range = {5, 35},
+        Increment = 1,
+        Suffix = "Studs",
+        CurrentValue = 14,
+        Callback = function(Value)
+            BrickStudioConfig.ServerSignals.HitboxSize = Value
+            if BrickStudioConfig.ServerSignals.HitboxExpander then
+                applyHitboxExpander(true)
+            end
+        end,
+    })
+
+    ServerTab:CreateToggle({
+        Name = "🛡️ กันโดนตัวประหลาดชนกระเด็นตกแมพ (Server Anti-Fling)",
+        CurrentValue = true,
+        Callback = function(Value)
+            BrickStudioConfig.ServerSignals.AntiFling = Value
+        end,
+    })
+
+    ServerTab:CreateToggle({
+        Name = "🔁 ยิงแพ็กเกจเซิร์ฟเวอร์ล่าสุดซ้ำรัวๆ (Smart Packet Replay)",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.ServerSignals.ReplayLastRemote = Value
+        end,
+    })
+
+    ServerTab:CreateSection("☁️ วาร์ปหนีฉุกเฉิน & ปลดล็อกมุมกล้อง")
+
+    ServerTab:CreateButton({
+        Name = "☁️ วาร์ปหนีขึ้นแท่นปลอดภัยเหนือแมพทันที (Safe-Zone)",
+        Callback = function()
+            local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if myRoot then
+                SafeZoneSavedCFrame = myRoot.CFrame
+                local plat = Workspace:FindFirstChild("BrickStudio_SafePlatform")
+                if not plat then
+                    plat = Instance.new("Part")
+                    plat.Name = "BrickStudio_SafePlatform"
+                    plat.Size = Vector3.new(45, 2, 45)
+                    plat.Anchored = true
+                    plat.Transparency = 0.25
+                    plat.Color = Color3.fromRGB(0, 170, 255)
+                    plat.Material = Enum.Material.Neon
+                    plat.Position = myRoot.Position + Vector3.new(0, 180, 0)
+                    plat.Parent = Workspace
+                else
+                    plat.Position = myRoot.Position + Vector3.new(0, 180, 0)
+                end
+                myRoot.CFrame = plat.CFrame + Vector3.new(0, 5, 0)
+                sendBrickStudioNotification("☁️ วาร์ปขึ้นจุดปลอดภัยเรียบร้อย!", 3)
+            end
+        end,
+    })
+
+    ServerTab:CreateButton({
+        Name = "🔙 วาร์ปกลับลงมายังจุดเดิม",
+        Callback = function()
+            local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if myRoot and SafeZoneSavedCFrame then
+                myRoot.CFrame = SafeZoneSavedCFrame
+                sendBrickStudioNotification("🔙 วาร์ปกลับจุดเดิมเรียบร้อย!", 3)
+            end
+        end,
+    })
+
+    ServerTab:CreateButton({
+        Name = "🔭 ปลดล็อกซูมกล้องทะลุกำแพงไม่จำกัดระยะ",
+        Callback = function()
+            LocalPlayer.CameraMaxZoomDistance = 1500
+            LocalPlayer.CameraMinZoomDistance = 0.5
+            LocalPlayer.DevCameraOcclusionMode = Enum.DevCameraOcclusionMode.Invisicam
+            sendBrickStudioNotification("🔭 ปลดล็อกซูมกล้องทะลุกำแพงเรียบร้อย!", 3)
+        end,
+    })
+
+    ServerTab:CreateSection("🎛️ เลือกยิงสัญญาณเซิร์ฟเวอร์ด้วยตัวเอง (Custom Remote Sender)")
+
+    local RemoteDropdown = ServerTab:CreateDropdown({
+        Name = "เลือกสัญญาณเซิร์ฟเวอร์ (RemoteEvent / Function)",
+        Options = RemoteNamesList,
+        CurrentOption = {RemoteNamesList[1] or ""},
+        MultipleOptions = false,
+        Callback = function(Options)
+            if Options and Options[1] then
+                BrickStudioConfig.ServerSignals.SelectedRemoteName = Options[1]
+            end
+        end,
+    })
+
+    ServerTab:CreateInput({
+        Name = "พารามิเตอร์ที่ต้องการส่ง (เว้นว่างได้)",
+        PlaceholderText = "เช่น Key, Pumpkin, Collect, Start...",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(Text)
+            BrickStudioConfig.ServerSignals.CustomSignalArg = Text
+        end,
+    })
+
+    ServerTab:CreateButton({
+        Name = "⚡ ยิงสัญญาณที่เลือกไปยังเซิร์ฟเวอร์ทันที (FireServer)",
+        Callback = function()
+            fireSelectedCustomRemote()
+        end,
+    })
+
+    ServerTab:CreateToggle({
+        Name = "🔄 ยิงสัญญาณที่เลือกซ้ำอัตโนมัติ (Auto-Fire Custom)",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.ServerSignals.AutoFireCustom = Value
+        end,
+    })
+
+    ServerTab:CreateButton({
+        Name = "🔄 สแกนหาสัญญาณเซิร์ฟเวอร์ใหม่ (Refresh Remotes)",
+        Callback = function()
+            scanAndHookServerSignals()
+            pcall(function() RemoteDropdown:Refresh(RemoteNamesList) end)
+            sendBrickStudioNotification("พบสัญญาณเซิร์ฟเวอร์ทั้งหมด " .. tostring(#RemoteNamesList) .. " รายการ!", 3)
+        end,
+    })
+
+    -- ========================================================================
+    -- แท็บที่ 4: 🏃 เพิ่มความไว (Speed & Movement)
+    -- ========================================================================
+    local SpeedTab = Window:CreateTab("🏃 เพิ่มความไว (Speed)", 4483362458)
+
+    SpeedTab:CreateSection("ระบบล็อกความเร็วการเดิน (WalkSpeed)")
+
+    SpeedTab:CreateToggle({
+        Name = "เปิดใช้งานล็อกความไว (Lock WalkSpeed)",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.Movement.LockWalkSpeed = Value
+            if not Value and LocalPlayer.Character then
+                local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if hum then hum.WalkSpeed = 16 end
+            end
+        end,
+    })
+
+    SpeedTab:CreateSlider({
+        Name = "ระดับความเร็วการเดิน (WalkSpeed)",
+        Range = {16, 150},
+        Increment = 1,
+        Suffix = "Speed",
+        CurrentValue = 28,
+        Callback = function(Value)
+            BrickStudioConfig.Movement.TargetWalkSpeed = Value
+        end,
+    })
+
+    SpeedTab:CreateSection("ระบบความไวเสริม CFrame (ไม่โดนเซิร์ฟดึงกลับ)")
+
+    SpeedTab:CreateToggle({
+        Name = "เปิดใช้งานความไว CFrame (แนะนำเวลาหนีตัวประหลาด)",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.Movement.CFrameSpeedEnabled = Value
+        end,
+    })
+
+    SpeedTab:CreateSlider({
+        Name = "ระดับความแรง CFrame Speed",
+        Range = {0.2, 5},
+        Increment = 0.2,
+        Suffix = "x",
+        CurrentValue = 1.2,
+        Callback = function(Value)
+            BrickStudioConfig.Movement.CFrameSpeedPower = Value
+        end,
+    })
+
+    SpeedTab:CreateSection("ตัวช่วยการเคลื่อนที่")
+
+    SpeedTab:CreateToggle({
+        Name = "กระโดดไม่จำกัด (Infinite Jump)",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.Movement.InfiniteJump = Value
+        end,
+    })
+
+    SpeedTab:CreateToggle({
+        Name = "เดินทะลุกำแพง (Noclip)",
+        CurrentValue = false,
+        Callback = function(Value)
+            BrickStudioConfig.Movement.Noclip = Value
+        end,
+    })
+end
+
+-- ============================================================================
+-- 11. ลูปการทำงานเบื้องหลังทั้งหมด (ป้องกันลูปตาย 100%)
+-- ============================================================================
+local HeartbeatConn = RunService.Heartbeat:Connect(function(dt)
+    if not BrickStudioConfig.Running then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+
+    if BrickStudioConfig.Movement.LockWalkSpeed and hum then
+        hum.WalkSpeed = BrickStudioConfig.Movement.TargetWalkSpeed
+    end
+
+    if BrickStudioConfig.Movement.CFrameSpeedEnabled and hum and root then
+        if hum.MoveDirection.Magnitude > 0 then
+            root.CFrame = root.CFrame + (hum.MoveDirection * (BrickStudioConfig.Movement.CFrameSpeedPower * dt * 15))
+        end
+    end
+
+    if BrickStudioConfig.ServerSignals.AntiFling and root then
+        if root.AssemblyLinearVelocity.Magnitude > 120 or root.AssemblyAngularVelocity.Magnitude > 120 then
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+        end
+    end
+end)
+
+local SteppedConn = RunService.Stepped:Connect(function()
+    if not BrickStudioConfig.Running then return end
+    if BrickStudioConfig.Movement.Noclip and LocalPlayer.Character then
+        for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
+local JumpConn = UserInputService.JumpRequest:Connect(function()
+    if not BrickStudioConfig.Running then return end
+    if BrickStudioConfig.Movement.InfiniteJump and LocalPlayer.Character then
+        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+-- ลูปสแกนแมพและส่งสัญญาณเซิร์ฟเวอร์อัตโนมัติ
+task.spawn(function()
+    rescanMapObjects()
+    while BrickStudioConfig.Running do
+        pcall(rescanMapObjects)
+
+        -- เก็บกุญแจและเหรียญด้วยสัญญาณเซิร์ฟเวอร์ (ไม่วาร์ป)
+        if BrickStudioConfig.CollectSystem.AutoSignalKeysCoins then
+            pcall(collectAllKeysAndCoinsBySignal, true)
+        end
+
+        -- เก็บหัวฟักทองด้วยสัญญาณเซิร์ฟเวอร์ (ไม่วาร์ป)
+        if BrickStudioConfig.CollectSystem.AutoSignalPumpkins then
+            pcall(collectAllPumpkinsBySignal, true)
+        end
+
+        -- เก็บหัวฟักทองด้วยการวาร์ป
+        if BrickStudioConfig.CollectSystem.AutoTeleportPumpkins and not isTeleportFarmingPumpkins and #CachedPumpkins > 0 then
+            task.spawn(collectAllPumpkinsByTeleport)
+        end
+
+        -- 4 สัญญาณเซิร์ฟเวอร์หลัก
+        if BrickStudioConfig.ServerSignals.AutoSignal1_Interact then
+            pcall(triggerServerSignal1_Interact, true)
+        end
+        if BrickStudioConfig.ServerSignals.AutoSignal2_CollectAll then
+            pcall(triggerServerSignal2_CollectAll, true)
+        end
+        if BrickStudioConfig.ServerSignals.AutoSignal3_Combat then
+            pcall(triggerServerSignal3_Combat, true)
+        end
+        if BrickStudioConfig.ServerSignals.AutoSignal4_RoundState then
+            pcall(triggerServerSignal4_RoundState, true)
+        end
+
+        -- ระบบเสริมฝั่งเซิร์ฟเวอร์
+        if BrickStudioConfig.ServerSignals.HitboxExpander then
+            pcall(applyHitboxExpander, true)
+        end
+        if BrickStudioConfig.ServerSignals.ReplayLastRemote and LastCapturedRemote then
+            pcall(function()
+                LastCapturedRemote:FireServer(table.unpack(LastCapturedArgs))
+            end)
+        end
+        if BrickStudioConfig.ServerSignals.AutoFireCustom then
+            pcall(fireSelectedCustomRemote)
+        end
+
+        task.wait(0.85)
+    end
+end)
+
+-- ลูปหลักสำหรับอัปเดต Ultra ESP V5 และระบบหลบตัวประหลาดอัตโนมัติ
+task.spawn(function()
+    while BrickStudioConfig.Running do
+        pcall(function()
+            if BrickStudioConfig.ESP.Fullbright then
+                applyFullbright(true)
+            end
+
+            local closestMonsterDist = refreshAllESPNow()
+
+            if BrickStudioConfig.ServerSignals.AutoDodgeMonster and closestMonsterDist <= BrickStudioConfig.ServerSignals.DodgeDistance then
+                local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if myRoot then
+                    myRoot.CFrame = myRoot.CFrame * CFrame.new(math.random(-18, 18), 8, -22)
+                end
+            end
+        end)
+        task.wait(0.2)
+    end
+end)
+
+-- ฟังก์ชันทำความสะอาดเมื่อรันสคริปต์ซ้ำ
+_G.BrickStudio_Cleanup = function()
+    BrickStudioConfig.Running = false
+    pcall(function() HeartbeatConn:Disconnect() end)
+    pcall(function() SteppedConn:Disconnect() end)
+    pcall(function() JumpConn:Disconnect() end)
+    clearESPCategory(nil)
+    if ESPContainer then pcall(function() ESPContainer:Destroy() end) end
+    if RadarScreen then pcall(function() RadarScreen:Destroy() end) end
+end
